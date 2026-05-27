@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/Users/vrihad/Developer/projects_mpmc/spsc_queue/build/cmake_install.cmake"
+	],
+	"Parallel" : false
+}
