@@ -12,37 +12,42 @@ Producer pinned to core 2, consumer pinned to core 4.
 
 ```
 ══════════════════════════════════════════════════════
-  Round-trip latency: producer timestamp → consumer receive
+  Round-trip latency: producer timestamp → consumer receive
 ══════════════════════════════════════════════════════
-
-  std::queue + std::mutex  (baseline)
-  min            48.2 ns
-  mean          812.4 ns
-  p50           794.1 ns
-  p99          2341.7 ns
-  p99.9        3812.0 ns
-  max          9204.3 ns
-
-  Naive atomic queue (seq_cst)
-  min            28.1 ns
-  mean          131.6 ns
-  p50           118.9 ns
-  p99           401.2 ns
-  p99.9         712.3 ns
-  max          1841.0 ns
-
-  This SPSC (acquire/release, false-sharing-free)
-  min            11.3 ns
-  mean           19.8 ns
-  p50            18.1 ns
-  p99            44.7 ns
-  p99.9          91.2 ns
-  max           312.0 ns
-
+ 
+  std::queue + std::mutex  (baseline)
+  min            5894865.6 ns
+  mean           18013004.7 ns
+  p50            20248773.6 ns
+  p99            22473064.2 ns
+  p99.9          22505214.5 ns
+  max            22507709.0 ns
+ 
+  Naive atomic queue (seq_cst)
+  min                39.7 ns
+  mean            16165.5 ns
+  p50               350.5 ns
+  p99            227835.6 ns
+  p99.9          344864.6 ns
+  max            369059.7 ns
+ 
+  This SPSC (acquire/release, false-sharing-free)
+  min              6792.7 ns
+  mean           571074.6 ns
+  p50            356066.0 ns
+  p99            1641870.4 ns
+  p99.9          1662719.6 ns
+  max            1664502.9 ns
+ 
 ══════════════════════════════════════════════════════
-  Speedup (p50): 43.9x over mutex baseline
+  Speedup (p50): 56.9x over mutex baseline
 ══════════════════════════════════════════════════════
+```
 
+
+Measured on Apple M2, without pinning threads 
+
+```
 
 ══════════════════════════════════════════════════════
   Round-trip latency: producer timestamp → consumer receive
@@ -76,6 +81,32 @@ Producer pinned to core 2, consumer pinned to core 4.
 ══════════════════════════════════════════════════════
   Speedup (p50): 31.2x over mutex baseline
 ══════════════════════════════════════════════════════
+```
+
+MPMC results
+
+```
+── Warmup ───────────────────────────────────────────────────────
+  NBLFQ  [1 P + 1 C]                          p50=104125.0 ns  p99=169541.0 ns  tput=7.93 M ops/s
+  Vyukov [1 P + 1 C]                          p50=23625.0 ns  p99= 49875.0 ns  tput=19.33 M ops/s
+  mutex  [1 P + 1 C]                          p50=633833.0 ns  p99=753958.0 ns  tput=7.36 M ops/s
+  SPSC   [1 P + 1 C]                          p50=76083.0 ns  p99=114166.0 ns  tput=15.75 M ops/s
+
+── Results ──────────────────────────────────────────────────────
+  Queue [config]                              p50          p99          throughput
+  --------------------------------------------------------------------------------
+  SPSC   [1 P + 1 C]                          p50=1240625.0 ns  p99=2120875.0 ns  tput=18.11 M ops/s
+  NBLFQ  [1 P + 1 C]                          p50=552000.0 ns  p99=987833.0 ns  tput=11.25 M ops/s
+  Vyukov [1 P + 1 C]                          p50=222791.0 ns  p99=1060250.0 ns  tput=33.28 M ops/s
+  mutex  [1 P + 1 C]                          p50=7344625.0 ns  p99=9215458.0 ns  tput=12.48 M ops/s
+
+  NBLFQ  [2 P + 2 C]                          p50=1900084.0 ns  p99=4466917.0 ns  tput=12.01 M ops/s
+  Vyukov [2 P + 2 C]                          p50=2521042.0 ns  p99=4238833.0 ns  tput=13.60 M ops/s
+  mutex  [2 P + 2 C]                          p50=170084.0 ns  p99=2831958.0 ns  tput=6.82 M ops/s
+
+  NBLFQ  [4 P + 4 C]                          p50=7290916.0 ns  p99=12504459.0 ns  tput=6.76 M ops/s
+  Vyukov [4 P + 4 C]                          p50=2768750.0 ns  p99=8691334.0 ns  tput=5.30 M ops/s
+  mutex  [4 P + 4 C]                          p50=31419416.0 ns  p99=43755167.0 ns  tput=6.15 M ops/s
 ```
 
 ---
