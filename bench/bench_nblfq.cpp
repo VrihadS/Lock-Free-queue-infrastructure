@@ -1,19 +1,12 @@
 // ── NBLFQ benchmark ──────────────────────────────────────────────────────
 //
-// Compares four queue implementations across 1, 2, 4, 8 producer/consumer pairs:
-//
-//   1. std::queue + mutex          (baseline — serialised)
-//   2. SPSC acquire/release queue  (our existing queue — 1P1C only)
-//   3. NBLFQ                       (this paper's MPMC queue)
-//
+// Compares four queue implementations across 1, 2, 4 producer/consumer pairs.
 // Metric: round-trip latency (producer stamps rdtsc, consumer measures delta)
 // and throughput (total ops / elapsed wall time).
-//
-// Mimics the paper's "pairwise with preload" producer/consumer benchmark:
-// N producer threads each enqueue K items; N consumer threads each dequeue K items.
 
 #include "nblfq.hpp"
 #include "spsc_queue.hpp"
+#include "mpmc.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -66,13 +59,51 @@ static void pin(int core) {
     (void)core;
 #endif
 }
+// static void pin(int core)
+// {
+//     cpu_set_t set;
 
+//     CPU_ZERO(&set);
+//     CPU_SET(core, &set);
+
+//     int rc =
+//         pthread_setaffinity_np(
+//             pthread_self(),
+//             sizeof(set),
+//             &set);
+
+//     if (rc)
+//     {
+//         perror("pthread_setaffinity_np");
+//         abort();
+//     }
+
+//     cpu_set_t verify;
+
+//     CPU_ZERO(&verify);
+
+//     pthread_getaffinity_np(
+//         pthread_self(),
+//         sizeof(verify),
+//         &verify);
+
+//     printf(
+//         "thread %lu pinned to CPUs:",
+//         pthread_self());
+
+//     for (int i = 0; i < CPU_SETSIZE; ++i)
+//     {
+//         if (CPU_ISSET(i, &verify))
+//             printf(" %d", i);
+//     }
+
+//     printf("\n");
+// }
 // ── Stats ─────────────────────────────────────────────────────────────────
 static void print_stats(const char* label, std::vector<double>& lats_ns,
                         double wall_ns, size_t total_ops) {
     std::sort(lats_ns.begin(), lats_ns.end());
     size_t n = lats_ns.size();
-    double sum = std::accumulate(lats_ns.begin(), lats_ns.end(), 0.0);
     printf("  %-42s  p50=%7.1f ns  p99=%8.1f ns  tput=%.2f M ops/s\n",
            label,
            lats_ns[n*50/100],
@@ -81,37 +112,53 @@ static void print_stats(const char* label, std::vector<double>& lats_ns,
 }
 
 // ── Benchmark: mutex baseline ──────────────────────────────────────────────
+// FIX 1: Timestamp taken inside the lock so it measures queue latency, not
+//         mutex-acquisition latency.
+// FIX 2: Consumers terminate on a shared total_consumed counter instead of
+//         per-thread count — prevents deadlock when items are stolen across
+//         consumers and one thread starves.
+// FIX 3: lats collected into per-thread local vectors and merged after join
+//         to eliminate the concurrent push_back data race.
 static void bench_mutex(size_t N_pairs, size_t K, int base_core) {
     std::queue<uint64_t> q;
     std::mutex mtx;
-    std::vector<double> lats;
-    lats.reserve(N_pairs * K);
-    std::atomic<size_t> done{0};
+    std::atomic<size_t> total_consumed{0};
+    const size_t total = N_pairs * K;
+
+    // Per-thread latency vectors, merged after join — no concurrent writes.
+    std::vector<std::vector<double>> thread_lats(N_pairs);
 
     auto wall0 = std::chrono::high_resolution_clock::now();
     std::vector<std::thread> prods, cons;
 
     for (size_t t = 0; t < N_pairs; ++t) {
-        prods.emplace_back([&,t]{
+        prods.emplace_back([&, t]{
             pin(base_core + (int)t*2);
             for (size_t i = 0; i < K; ++i) {
-                auto ts = TIMER();
                 std::lock_guard<std::mutex> lk(mtx);
-                q.push(ts);
+                // Timestamp inside the lock: measures true enqueue moment.
+                q.push(TIMER());
             }
         });
     }
     for (size_t t = 0; t < N_pairs; ++t) {
-        cons.emplace_back([&,t]{
+        cons.emplace_back([&, t]{
             pin(base_core + (int)t*2 + 1);
-            size_t got = 0;
-            while (got < K) {
+            auto& local = thread_lats[t];
+            local.reserve(K);
+            // Terminate when the shared counter reaches total, not when this
+            // thread personally dequeued K items — prevents cross-consumer starvation.
+            while (total_consumed.load(std::memory_order_relaxed) < total) {
                 uint64_t ts = 0;
-                { std::lock_guard<std::mutex> lk(mtx);
-                  if (!q.empty()) { ts = q.front(); q.pop(); } }
-                if (ts) { lats.push_back(to_ns(TIMER()-ts)); ++got; }
+                {
+                    std::lock_guard<std::mutex> lk(mtx);
+                    if (!q.empty()) { ts = q.front(); q.pop(); }
+                }
+                if (ts) {
+                    local.push_back(to_ns(TIMER() - ts));
+                    total_consumed.fetch_add(1, std::memory_order_relaxed);
+                }
             }
-            done.fetch_add(1);
         });
     }
     for (auto& p : prods) p.join();
@@ -119,14 +166,21 @@ static void bench_mutex(size_t N_pairs, size_t K, int base_core) {
     auto wall1 = std::chrono::high_resolution_clock::now();
     double wall_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(wall1-wall0).count();
 
+    // Merge per-thread latency vectors after all threads have exited.
+    std::vector<double> lats;
+    lats.reserve(total);
+    for (auto& v : thread_lats) lats.insert(lats.end(), v.begin(), v.end());
+
     char label[64];
     snprintf(label, sizeof(label), "mutex  [%zu P + %zu C]", N_pairs, N_pairs);
-    print_stats(label, lats, wall_ns, N_pairs * K);
+    print_stats(label, lats, wall_ns, total);
 }
 
 // ── Benchmark: SPSC (1P1C only) ───────────────────────────────────────────
+// FIX: was declared `static` — queue state persisted across warmup and
+//      benchmark runs, corrupting head/tail indices. Now stack-allocated.
 static void bench_spsc(size_t K, int prod_core, int cons_core) {
-    static lfq::SPSCQueue<uint64_t, (1<<17)> q;
+    lfq::SPSCQueue<uint64_t, (1<<17)> q;   // stack, fresh each call
     std::vector<double> lats(K);
 
     auto wall0 = std::chrono::high_resolution_clock::now();
@@ -140,44 +194,53 @@ static void bench_spsc(size_t K, int prod_core, int cons_core) {
 }
 
 // ── Benchmark: NBLFQ (MPMC) ───────────────────────────────────────────────
-static void bench_nblfq(size_t N_pairs, size_t K, int base_core) {
-    static lfq::NBLFQ<void*, (1<<17)> q;
+// NBLFQ stores pointers in 48-bit tagged slots (x86_64 virtual address limit).
+// Encoding a raw 64-bit TSC counter as a fake pointer corrupts bits [63:48].
+// Fix: pass a pointer to a TimestampBox; the pointer itself is < 2^47.
+//
+// FIX: was declared `static` — queue state (counters, head/tail) persisted
+//      across calls, causing the chasing loops to spin for millions of cycles
+//      on stale state left by the warmup run. Now stack-allocated.
+struct TimestampBox { uint64_t ts; };
 
-    std::vector<double> lats;
-    lats.reserve(N_pairs * K);
-    std::mutex lats_mtx;
+static void bench_nblfq(size_t N_pairs, size_t K, int base_core) {
+    lfq::NBLFQ<TimestampBox*, (1<<17)> q;  // stack, fresh each call
+
+    const size_t POOL = (1 << 17);
+    std::vector<TimestampBox> pool(POOL);
+
+    std::vector<std::vector<double>> thread_lats(N_pairs);
     std::atomic<size_t> total_consumed{0};
-    size_t total = N_pairs * K;
+    std::atomic<size_t> pool_idx{0};
+    const size_t total = N_pairs * K;
 
     auto wall0 = std::chrono::high_resolution_clock::now();
     std::vector<std::thread> prods, cons;
 
     for (size_t t = 0; t < N_pairs; ++t) {
-        prods.emplace_back([&,t]{
+        prods.emplace_back([&, t]{
             pin(base_core + (int)t*2);
             for (size_t i = 0; i < K; ++i) {
-                uint64_t ts = TIMER();
-                // Encode timestamp as fake pointer (add 1 to avoid NIL)
-                while (!q.enqueue(reinterpret_cast<void*>(ts + 1)))
+                size_t idx = pool_idx.fetch_add(1, std::memory_order_relaxed) & (POOL - 1);
+                TimestampBox* box = &pool[idx];
+                box->ts = TIMER();
+                while (!q.enqueue(box))
                     lfq::cpu_relax();
             }
         });
     }
     for (size_t t = 0; t < N_pairs; ++t) {
-        cons.emplace_back([&,t]{
+        cons.emplace_back([&, t]{
             pin(base_core + (int)t*2 + 1);
-            std::vector<double> local;
+            auto& local = thread_lats[t];
             local.reserve(K);
             while (total_consumed.load(std::memory_order_relaxed) < total) {
-                void* v = q.dequeue();
-                if (v) {
-                    uint64_t ts = reinterpret_cast<uint64_t>(v) - 1;
-                    local.push_back(to_ns(TIMER() - ts));
+                TimestampBox* box = q.dequeue();
+                if (box) {
+                    local.push_back(to_ns(TIMER() - box->ts));
                     total_consumed.fetch_add(1, std::memory_order_relaxed);
                 }
             }
-            std::lock_guard<std::mutex> lk(lats_mtx);
-            lats.insert(lats.end(), local.begin(), local.end());
         });
     }
     for (auto& p : prods) p.join();
@@ -185,14 +248,69 @@ static void bench_nblfq(size_t N_pairs, size_t K, int base_core) {
     auto wall1 = std::chrono::high_resolution_clock::now();
     double wall_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(wall1-wall0).count();
 
+    std::vector<double> lats;
+    lats.reserve(total);
+    for (auto& v : thread_lats) lats.insert(lats.end(), v.begin(), v.end());
+
     char label[64];
     snprintf(label, sizeof(label), "NBLFQ  [%zu P + %zu C]", N_pairs, N_pairs);
     print_stats(label, lats, wall_ns, total);
 }
 
+// ── Benchmark: Vyukov MPMC ────────────────────────────────────────────────
+static void bench_vyukov(size_t N_pairs, size_t K, int base_core) {
+    lfq::MPMCQueue<uint64_t> q(1 << 17);  // fresh each call (already heap, not static)
+
+    std::vector<std::vector<double>> thread_lats(N_pairs);
+    std::atomic<size_t> total_consumed{0};
+    const size_t total = N_pairs * K;
+
+    auto wall0 = std::chrono::high_resolution_clock::now();
+    std::vector<std::thread> prods, cons;
+
+    for (size_t t = 0; t < N_pairs; ++t) {
+        prods.emplace_back([&, t]{
+            pin(base_core + (int)t * 2);
+            for (size_t i = 0; i < K; ++i) {
+                uint64_t ts = TIMER();
+                while (!q.push(ts))
+                    lfq::cpu_relax();
+            }
+        });
+    }
+    for (size_t t = 0; t < N_pairs; ++t) {
+        cons.emplace_back([&, t]{
+            pin(base_core + (int)t * 2 + 1);
+            auto& local = thread_lats[t];
+            local.reserve(K);
+            while (total_consumed.load(std::memory_order_relaxed) < total) {
+                uint64_t ts;
+                if (q.pop(ts)) {
+                    local.push_back(to_ns(TIMER() - ts));
+                    total_consumed.fetch_add(1, std::memory_order_relaxed);
+                } else {
+                    lfq::cpu_relax();
+                }
+            }
+        });
+    }
+    for (auto& p : prods) p.join();
+    for (auto& c : cons)  c.join();
+    auto wall1 = std::chrono::high_resolution_clock::now();
+    double wall_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(wall1-wall0).count();
+
+    std::vector<double> lats;
+    lats.reserve(total);
+    for (auto& v : thread_lats) lats.insert(lats.end(), v.begin(), v.end());
+
+    char label[64];
+    snprintf(label, sizeof(label), "Vyukov [%zu P + %zu C]", N_pairs, N_pairs);
+    print_stats(label, lats, wall_ns, total);
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────
 int main(int argc, char* argv[]) {
-    const size_t K = (argc > 1) ? std::atoll(argv[1]) : 200'000;  // ops per producer
+    const size_t K = (argc > 1) ? std::atoll(argv[1]) : 200'000;
 
     printf("\nNBLFQ vs SPSC vs Mutex Benchmark\n");
     printf("Ops per producer: %zu\n\n", K);
@@ -201,25 +319,27 @@ int main(int argc, char* argv[]) {
 
     printf("── Warmup ───────────────────────────────────────────────────────\n");
     bench_nblfq(1, 10000, 0);
+    bench_vyukov(1, 10000, 0);
+    bench_mutex(1, 10000, 0);
     bench_spsc(10000, 0, 1);
 
     printf("\n── Results ──────────────────────────────────────────────────────\n");
     printf("  %-42s  %s\n", "Queue [config]", "p50          p99          throughput");
     printf("  %s\n", std::string(80, '-').c_str());
 
-    // 1 producer, 1 consumer
     bench_spsc(K, 0, 1);
     bench_nblfq(1, K, 0);
+    bench_vyukov(1, K, 0);
     bench_mutex(1, K, 0);
     printf("\n");
 
-    // 2 producers, 2 consumers
     bench_nblfq(2, K, 0);
+    bench_vyukov(2, K, 0);
     bench_mutex(2, K, 0);
     printf("\n");
 
-    // 4 producers, 4 consumers
     bench_nblfq(4, K, 0);
+    bench_vyukov(4, K, 0);
     bench_mutex(4, K, 0);
     printf("\n");
 
