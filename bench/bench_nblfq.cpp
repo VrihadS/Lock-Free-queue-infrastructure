@@ -50,13 +50,21 @@
   static inline double to_ns(uint64_t d) { return (double)d; }
   static void calibrate() {}
 #endif
+#include <pthread.h>
 
+void prefer_p_cores()
+{
+    pthread_set_qos_class_self_np(
+        QOS_CLASS_USER_INTERACTIVE,
+        0);
+}
 static void pin(int core) {
 #if defined(__linux__)
     cpu_set_t s; CPU_ZERO(&s); CPU_SET(core,&s);
     pthread_setaffinity_np(pthread_self(),sizeof(s),&s);
 #else
-    (void)core;
+    // (void)core;
+    prefer_p_cores();
 #endif
 }
 // static void pin(int core)
