@@ -154,7 +154,7 @@ struct NaiveQueue {
 };
 
 static std::vector<uint64_t> bench_seqcst(size_t N, int prod_core, int cons_core) {
-    static NaiveQueue<(1 << 16)> q;
+    NaiveQueue<(1 << 16)> q;
     std::vector<uint64_t> latencies(N);
 
     std::thread producer([&] {
@@ -181,7 +181,7 @@ static std::vector<uint64_t> bench_seqcst(size_t N, int prod_core, int cons_core
 
 // ── Benchmark 3: This SPSC queue (acquire/release) ────────────────────────
 static std::vector<uint64_t> bench_spsc(size_t N, int prod_core, int cons_core) {
-    static lfq::SPSCQueue<uint64_t, (1 << 16)> q;
+    lfq::SPSCQueue<uint64_t, (1 << 16)> q;
     std::vector<uint64_t> latencies(N);
 
     std::thread producer([&] {
@@ -244,7 +244,7 @@ int main(int argc, char* argv[]) {
     std::sort(lats_spsc.begin(),   lats_spsc.end());
     double mutex_p50 = rdtsc_to_ns(lats_mutex[N / 2], ghz);
     double spsc_p50  = rdtsc_to_ns(lats_spsc [N / 2], ghz);
-
+    printf("%f ns (mutex) vs %f ns (SPSC)\n", mutex_p50, spsc_p50);
     printf("\n══════════════════════════════════════════════════════\n");
     printf("  Speedup (p50): %.1fx over mutex baseline\n", mutex_p50 / spsc_p50);
     printf("══════════════════════════════════════════════════════\n\n");

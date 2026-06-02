@@ -42,6 +42,40 @@ Producer pinned to core 2, consumer pinned to core 4.
 ══════════════════════════════════════════════════════
   Speedup (p50): 43.9x over mutex baseline
 ══════════════════════════════════════════════════════
+
+
+══════════════════════════════════════════════════════
+  Round-trip latency: producer timestamp → consumer receive
+══════════════════════════════════════════════════════
+
+  std::queue + std::mutex  (baseline)     
+  min              1958.0 ns
+  mean           2616442.6 ns
+  p50            2600666.0 ns
+  p99            3828500.0 ns
+  p99.9          3877375.0 ns
+  max            3887500.0 ns
+
+  Naive atomic queue (seq_cst)            
+  min                42.0 ns
+  mean           438710.3 ns
+  p50            437125.0 ns
+  p99            898958.0 ns
+  p99.9          907334.0 ns
+  max            910500.0 ns
+
+  This SPSC (acquire/release, false-sharing-free)
+  min                41.0 ns
+  mean           128538.5 ns
+  p50             83292.0 ns
+  p99            339334.0 ns
+  p99.9          347500.0 ns
+  max            347542.0 ns
+2600666.000000 ns (mutex) vs 83292.000000 ns (SPSC)
+
+══════════════════════════════════════════════════════
+  Speedup (p50): 31.2x over mutex baseline
+══════════════════════════════════════════════════════
 ```
 
 ---
