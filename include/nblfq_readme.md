@@ -84,12 +84,3 @@ cmake --build build -j$(nproc)
 
 ---
 
-## Interview questions this covers
-
-| Question | Answer |
-|---|---|
-| What is the ABA problem? | A CAS sees value A, another thread changes A→B→A, CAS succeeds incorrectly. The 16-bit counter makes each (ptr, counter) pair unique across the lifetime of a slot. |
-| Why not use seq_cst everywhere? | seq_cst inserts MFENCE on x86 — a full pipeline serialisation. The CAS already acts as a full barrier; surrounding loads use relaxed where possible. |
-| What makes this better than Michael-Scott queue? | MS-queue needs dynamic allocation (malloc on enqueue). NBLFQ is bounded, statically allocated, and interrupt-safe. |
-| How does tail chasing terminate? | The logical sequence `sᵢ = i + counter[i]×S` cannot be non-decreasing around an entire ring for S>1. There is always a step-down — the proof is in §V-B of the paper. |
-| Why store counters only on dequeue? | It creates a consistent asymmetry: empty slots always have counter = n, full slots always have counter = n. This lets `comp()` distinguish head and tail without a global state variable. |

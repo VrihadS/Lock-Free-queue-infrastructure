@@ -219,14 +219,3 @@ pahole build/test_spsc   # (requires dwarves package)
 ```
 
 ---
-
-## What interviewers typically ask
-
-| Question | Answer |
-|---|---|
-| What is false sharing? | Two threads writing to different variables that happen to share a cache line — every write invalidates the other core's cache. |
-| Why acquire/release and not seq_cst? | seq_cst inserts a full memory fence (MFENCE) on every store. acquire/release is sufficient to guarantee visibility of the slot write, with no unnecessary serialisation. |
-| Why power-of-2 capacity? | Replaces modulo (costly division) with bitwise AND. Enforced by static_assert. |
-| What does PAUSE do? | x86 hint for spin-wait loops: avoids pipeline flush on exit, reduces power, yields to HT sibling. |
-| Is this safe for multiple producers? | No — MPSC or full mutex required. The design deliberately assumes one producer. |
-| How would you make it MPSC? | CAS on head_ instead of relaxed load + release store; or use a separate sequence lock per slot (more complex). |
