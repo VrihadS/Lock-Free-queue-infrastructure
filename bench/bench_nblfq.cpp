@@ -120,13 +120,6 @@ static void print_stats(const char* label, std::vector<double>& lats_ns,
 }
 
 // ── Benchmark: mutex baseline ──────────────────────────────────────────────
-// FIX 1: Timestamp taken inside the lock so it measures queue latency, not
-//         mutex-acquisition latency.
-// FIX 2: Consumers terminate on a shared total_consumed counter instead of
-//         per-thread count — prevents deadlock when items are stolen across
-//         consumers and one thread starves.
-// FIX 3: lats collected into per-thread local vectors and merged after join
-//         to eliminate the concurrent push_back data race.
 static void bench_mutex(size_t N_pairs, size_t K, int base_core) {
     std::queue<uint64_t> q;
     std::mutex mtx;
@@ -185,8 +178,6 @@ static void bench_mutex(size_t N_pairs, size_t K, int base_core) {
 }
 
 // ── Benchmark: SPSC (1P1C only) ───────────────────────────────────────────
-// FIX: was declared `static` — queue state persisted across warmup and
-//      benchmark runs, corrupting head/tail indices. Now stack-allocated.
 static void bench_spsc(size_t K, int prod_core, int cons_core) {
     lfq::SPSCQueue<uint64_t, (1<<17)> q;   // stack, fresh each call
     std::vector<double> lats(K);
@@ -203,12 +194,6 @@ static void bench_spsc(size_t K, int prod_core, int cons_core) {
 
 // ── Benchmark: NBLFQ (MPMC) ───────────────────────────────────────────────
 // NBLFQ stores pointers in 48-bit tagged slots (x86_64 virtual address limit).
-// Encoding a raw 64-bit TSC counter as a fake pointer corrupts bits [63:48].
-// Fix: pass a pointer to a TimestampBox; the pointer itself is < 2^47.
-//
-// FIX: was declared `static` — queue state (counters, head/tail) persisted
-//      across calls, causing the chasing loops to spin for millions of cycles
-//      on stale state left by the warmup run. Now stack-allocated.
 struct TimestampBox { uint64_t ts; };
 
 static void bench_nblfq(size_t N_pairs, size_t K, int base_core) {
