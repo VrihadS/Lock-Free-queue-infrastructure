@@ -46,7 +46,7 @@ RUN
 chmod +x "$OUT/run.sh"
 
 # Record the build host's glibc: the target must have the same or newer.
-{ echo "built on: $(hostname)"; ldd --version | head -1; } > "$OUT/BUILD_INFO.txt"
+{ echo "built on: $(hostname)"; ldd --version 2>&1 | sed -n 1p; } > "$OUT/BUILD_INFO.txt"
 
 tar -C "$ROOT/dist" -czf "$ROOT/dist/bench_bundle.tar.gz" bench_bundle
 echo "Created $ROOT/dist/bench_bundle.tar.gz ($(du -sh "$ROOT/dist/bench_bundle.tar.gz" | cut -f1))"
