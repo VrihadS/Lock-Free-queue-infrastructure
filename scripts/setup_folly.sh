@@ -8,6 +8,7 @@
 #
 # Environment:
 #   FOLLY_REF   folly git tag/branch to build   (default: v2026.09.14.00)
+#   FASTFLOAT_REF  fast_float tag, fetched only if not installed system-wide (default: v8.2.10)
 #   CXX         C++ compiler; folly needs C++20, i.e. GCC >= 11 (12+ preferred), e.g. CXX=g++-12
 #   JOBS        parallel build jobs             (default: all cores)
 #
@@ -59,10 +60,23 @@ if [[ ! -d "$SRC/.git" ]]; then
     git clone --depth 1 --branch "$FOLLY_REF" https://github.com/facebook/folly.git "$SRC"
 fi
 
+# folly requires fast_float (header-only). Rocky/RHEL repos do not reliably ship it,
+# so fetch it into third_party/ unless it is already installed.
+EXTRA_ARGS=()
+if [[ ! -f /usr/include/fast_float/fast_float.h && ! -f /usr/local/include/fast_float/fast_float.h ]]; then
+    FF="$ROOT/third_party/fast_float"
+    if [[ ! -f "$FF/include/fast_float/fast_float.h" ]]; then
+        git clone --depth 1 --branch "${FASTFLOAT_REF:-v8.2.10}" \
+            https://github.com/fastfloat/fast_float.git "$FF"
+    fi
+    EXTRA_ARGS+=(-DFASTFLOAT_INCLUDE_DIR="$FF/include")
+fi
+
 cmake -S "$SRC" -B "$SRC/_build" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="$PREFIX" \
-    -DBUILD_TESTS=OFF
+    -DBUILD_TESTS=OFF \
+    ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
 cmake --build "$SRC/_build" -j"$JOBS"
 cmake --install "$SRC/_build"
 
