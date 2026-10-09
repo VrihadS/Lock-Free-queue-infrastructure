@@ -232,6 +232,31 @@ folly comparison. Folly needs C++20, so only `bench_nblfq` is compiled as C++20.
 
 ---
 
+## Uninstalling
+
+Everything the scripts create lives inside the repo folder, except the system packages
+from `setup_folly.sh --install-deps`.
+
+```bash
+./scripts/clean.sh          # deletes third_party/, build/, build_*/, run_*.txt (asks first; -y to skip)
+```
+
+System packages (needs sudo; on a production box, review each step):
+
+```bash
+sudo dnf history list | head -10     # find the two install transactions
+sudo dnf history info <ID>           # see exactly what it installed
+sudo dnf history undo <ID>           # newest first; answer N to review, then repeat and answer y
+# only if CRB was disabled before you started (powertools on Rocky 8):
+sudo dnf config-manager --set-disabled crb
+```
+
+`undo` removes only what that transaction installed (including its dependencies), so
+tools that were already on the machine are left alone. Avoid `dnf history rollback`.
+`gcc-toolset-12` lives in `/opt/rh` and never changes the default `gcc`.
+
+---
+
 ## Build & Run
 
 ```bash
