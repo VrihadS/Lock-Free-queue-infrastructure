@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Remove everything this repo's scripts created INSIDE the repo directory:
-#   third_party/ (folly sources + install), build/, build_*/, run_*.txt
+#   third_party/ (folly sources + install), build/, build_*/, dist/, run_*.txt
 # It never touches anything outside the repo and never uses sudo.
 #
 # Usage:
@@ -27,7 +27,7 @@ fi
 
 shopt -s nullglob
 targets=()
-for p in "$ROOT/third_party" "$ROOT/build" "$ROOT"/build_* "$ROOT"/run_*.txt; do
+for p in "$ROOT/third_party" "$ROOT/build" "$ROOT"/build_* "$ROOT/dist" "$ROOT"/run_*.txt; do
     [[ -e "$p" ]] && targets+=("$p")
 done
 

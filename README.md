@@ -232,6 +232,27 @@ folly comparison. Folly needs C++20, so only `bench_nblfq` is compiled as C++20.
 
 ---
 
+## Running on a machine where you have no root (e.g. production)
+
+Build on a dev box of the same OS/architecture, then ship a self-contained bundle:
+
+```bash
+# dev box
+./scripts/package.sh                      # -> dist/bench_bundle.tar.gz
+
+# target (user space only; nothing outside the unpacked folder is touched)
+tar xzf bench_bundle.tar.gz && cd bench_bundle
+$EDITOR bench.conf                        # isolated cores only
+./run.sh
+```
+
+The target needs only a glibc at least as new as the build host's (`BUILD_INFO.txt`).
+Remove it with `rm -rf bench_bundle`. Before running, confirm the cores you chose are idle
+(`top -H`, `ps -eLo psr,pcpu,comm | awk '$1==2'`): the benchmark spins at 100% on every
+core it uses.
+
+---
+
 ## Uninstalling
 
 Everything the scripts create lives inside the repo folder, except the system packages
