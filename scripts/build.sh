@@ -5,6 +5,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Same toolchain as setup_folly.sh (must match the compiler folly was built with).
+if [[ -f /opt/rh/gcc-toolset-12/enable ]]; then
+    # shellcheck disable=SC1091
+    source /opt/rh/gcc-toolset-12/enable
+fi
 BUILD_DIR="${BUILD_DIR:-$ROOT/build}"
 FOLLY_PREFIX="$ROOT/third_party/folly-install"
 JOBS="${JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu)}"
