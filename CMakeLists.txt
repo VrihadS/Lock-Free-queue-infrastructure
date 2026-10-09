@@ -45,6 +45,26 @@ set(FOLLY_SRC_DIR   "" CACHE PATH "folly source checkout (in-tree build, option 
 set(FOLLY_BUILD_DIR "" CACHE PATH "folly build dir with libfolly.a and folly/folly-config.h (option B)")
 
 if(WITH_FOLLY)
+    # An installed folly's exported targets reference glog::glog, and its config only
+    # defines that target if the system glog ships a CMake config (Rocky/RHEL's often
+    # does not). Create it from the plain library + header in that case.
+    if(NOT TARGET glog::glog)
+        find_package(glog CONFIG QUIET)
+    endif()
+    if(NOT TARGET glog::glog)
+        find_library(GLOG_LIBRARY glog REQUIRED)
+        find_path(GLOG_INCLUDE_DIR glog/logging.h REQUIRED)
+        add_library(glog::glog UNKNOWN IMPORTED)
+        set_target_properties(glog::glog PROPERTIES
+            IMPORTED_LOCATION "${GLOG_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES "${GLOG_INCLUDE_DIR}")
+        # glog >= 0.7 headers need this define (they ship glog/export.h)
+        if(EXISTS "${GLOG_INCLUDE_DIR}/glog/export.h")
+            set_property(TARGET glog::glog APPEND PROPERTY
+                INTERFACE_COMPILE_DEFINITIONS GLOG_USE_GLOG_EXPORT)
+        endif()
+        message(STATUS "glog::glog : created from ${GLOG_LIBRARY}")
+    endif()
     find_package(folly CONFIG REQUIRED)
     set_target_properties(bench_nblfq PROPERTIES CXX_STANDARD 20)
     target_compile_definitions(bench_nblfq PRIVATE HAVE_FOLLY)
