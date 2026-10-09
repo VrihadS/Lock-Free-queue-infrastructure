@@ -1,0 +1,4 @@
+build/
+build_*/
+third_party/
+.DS_Store

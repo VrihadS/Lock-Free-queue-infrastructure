@@ -179,16 +179,56 @@ The x86 PAUSE instruction:
 ## Project Structure
 
 ```
-spsc_queue/
+.
 ├── CMakeLists.txt
-├── README.md
+├── bench.conf                 # core pinning + op count for bench_nblfq
+├── .gitignore
 ├── include/
-│   └── spsc_queue.hpp     # The entire implementation (header-only)
+│   ├── spsc_queue.hpp         # SPSC ring buffer
+│   ├── nblfq.hpp              # NBLFQ lock-free MPMC queue (see nblfq_readme.md)
+│   ├── mpmc.hpp               # Vyukov bounded MPMC queue
+│   └── nblfq_readme.md
 ├── bench/
-│   └── bench_spsc.cpp     # 3-way comparison: mutex vs seq_cst vs acquire/release
-└── tests/
-    └── test_spsc.cpp      # Single-threaded + multi-threaded correctness tests
+│   ├── bench_spsc.cpp         # mutex vs seq_cst vs acquire/release (SPSC)
+│   └── bench_nblfq.cpp        # SPSC / NBLFQ / Vyukov / folly / mutex at 1, 2, 4 pairs
+├── tests/
+│   ├── test_spsc.cpp
+│   └── test_nblfq.cpp
+└── scripts/
+    ├── setup_folly.sh         # clone + build + install folly into third_party/
+    └── build.sh               # configure + build (with folly if installed)
 ```
+
+---
+
+## Running the MPMC benchmark on a server (isolated cores, with folly)
+
+Everything needed is in this repo except folly itself, which is fetched and built
+by a script.
+
+```bash
+tar xzf Lock-Free-queue-infrastructure-main.tar.gz && cd Lock-Free-queue-infrastructure-*
+
+# 1. Build folly (once, ~10-30 min, needs internet). Use CXX=g++-12 if the default g++ is < 11.
+./scripts/setup_folly.sh --install-deps      # drop --install-deps if you already have the packages
+
+# 2. Choose cores
+cat /sys/devices/system/cpu/isolated
+$EDITOR bench.conf                           # producer_cores / consumer_cores / ops
+
+# 3. Build and run
+./scripts/build.sh
+./build/bench_nblfq bench.conf
+```
+
+`bench.conf`: producer `i` is pinned to `producer_cores[i]` and consumer `i` to
+`consumer_cores[i]`. The 1P+1C runs and SPSC use the first entry of each list; 2P+2C
+and 4P+4C are skipped unless the lists have at least 2 / 4 entries. A core may not
+appear twice. If pinning fails (e.g. a core id that does not exist) the benchmark
+prints a warning, because the numbers are then not isolated.
+
+Without `scripts/setup_folly.sh`, `scripts/build.sh` builds everything except the
+folly comparison. Folly needs C++20, so only `bench_nblfq` is compiled as C++20.
 
 ---
 

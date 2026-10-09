@@ -31,6 +31,45 @@ add_executable(test_nblfq   tests/test_nblfq.cpp)
 target_link_libraries(bench_nblfq PRIVATE spsc_lib Threads::Threads)
 target_link_libraries(test_nblfq  PRIVATE spsc_lib Threads::Threads)
 
+# ── Optional: benchmark against folly::MPMCQueue ──────────────────────────
+# Current folly requires C++20, so only bench_nblfq is raised to C++20.
+#
+# Option A (Linux server): folly installed to a prefix (getdeps/vcpkg/apt)
+#   cmake -B build -DWITH_FOLLY=ON -DCMAKE_PREFIX_PATH=/path/to/folly/install
+#
+# Option B (in-tree build, e.g. the macOS dev box): point at source + build dirs
+#   cmake -B build -DFOLLY_SRC_DIR=~/Developer/folly/folly \
+#                  -DFOLLY_BUILD_DIR=~/Developer/folly/folly/_build
+option(WITH_FOLLY "Benchmark against folly::MPMCQueue (installed folly, found via find_package)" OFF)
+set(FOLLY_SRC_DIR   "" CACHE PATH "folly source checkout (in-tree build, option B)")
+set(FOLLY_BUILD_DIR "" CACHE PATH "folly build dir with libfolly.a and folly/folly-config.h (option B)")
+
+if(WITH_FOLLY)
+    find_package(folly CONFIG REQUIRED)
+    set_target_properties(bench_nblfq PROPERTIES CXX_STANDARD 20)
+    target_compile_definitions(bench_nblfq PRIVATE HAVE_FOLLY)
+    target_link_libraries(bench_nblfq PRIVATE Folly::folly)
+    message(STATUS "folly      : enabled via find_package")
+elseif(FOLLY_SRC_DIR AND FOLLY_BUILD_DIR)
+    list(PREPEND CMAKE_PREFIX_PATH /opt/homebrew)
+    set(_folly_deps glog gflags fmt double-conversion event ssl crypto zstd lz4 snappy sodium)
+    set(_folly_dep_libs "")
+    foreach(dep ${_folly_deps})
+        find_library(_lib_${dep} ${dep} REQUIRED)
+        list(APPEND _folly_dep_libs ${_lib_${dep}})
+    endforeach()
+    find_library(FOLLY_LIB folly PATHS ${FOLLY_BUILD_DIR} NO_DEFAULT_PATH REQUIRED)
+    find_path(FOLLY_DEPS_INCLUDE glog/logging.h REQUIRED)
+
+    set_target_properties(bench_nblfq PROPERTIES CXX_STANDARD 20)
+    target_compile_definitions(bench_nblfq PRIVATE
+        HAVE_FOLLY FMT_SHARED GLOG_USE_GLOG_EXPORT GFLAGS_IS_A_DLL=0)
+    target_include_directories(bench_nblfq SYSTEM PRIVATE
+        ${FOLLY_SRC_DIR} ${FOLLY_BUILD_DIR} ${FOLLY_DEPS_INCLUDE})
+    target_link_libraries(bench_nblfq PRIVATE ${FOLLY_LIB} ${_folly_dep_libs} z c++abi)
+    message(STATUS "folly      : enabled in-tree (${FOLLY_LIB})")
+endif()
+
 enable_testing()
 add_test(NAME spsc_tests  COMMAND test_spsc)
 add_test(NAME nblfq_tests COMMAND test_nblfq)

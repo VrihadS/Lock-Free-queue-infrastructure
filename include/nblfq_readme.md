@@ -75,11 +75,9 @@ cmake --build build -j$(nproc)
 # Unit tests (141 assertions: single-threaded + MPMC correctness)
 ./build/test_nblfq
 
-# Benchmark: SPSC vs NBLFQ vs mutex, 1/2/4 producer+consumer pairs
-./build/bench_nblfq
-
-# Custom op count
-./build/bench_nblfq 500000
+# Benchmark: SPSC vs NBLFQ vs Vyukov vs folly (optional) vs mutex, 1/2/4 pairs.
+# Cores and op count come from a config file (see bench.conf in the repo root).
+./build/bench_nblfq bench.conf
 ```
 
 ---
