@@ -65,6 +65,21 @@ if(WITH_FOLLY)
         endif()
         message(STATUS "glog::glog : created from ${GLOG_LIBRARY}")
     endif()
+    # Same story for gflags: folly's link line names the bare target "gflags_shared"
+    # (taken from the system gflags-config.cmake), which only exists here if we
+    # load that config ourselves.
+    if(NOT TARGET gflags_shared)
+        find_package(gflags CONFIG QUIET)
+    endif()
+    if(NOT TARGET gflags_shared)
+        find_library(GFLAGS_LIBRARY gflags REQUIRED)
+        find_path(GFLAGS_INCLUDE_DIR gflags/gflags.h REQUIRED)
+        add_library(gflags_shared UNKNOWN IMPORTED)
+        set_target_properties(gflags_shared PROPERTIES
+            IMPORTED_LOCATION "${GFLAGS_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES "${GFLAGS_INCLUDE_DIR}")
+        message(STATUS "gflags_shared : created from ${GFLAGS_LIBRARY}")
+    endif()
     find_package(folly CONFIG REQUIRED)
     set_target_properties(bench_nblfq PROPERTIES CXX_STANDARD 20)
     target_compile_definitions(bench_nblfq PRIVATE HAVE_FOLLY)
