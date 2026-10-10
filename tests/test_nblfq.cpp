@@ -42,7 +42,7 @@ TEST(enqueue_dequeue_basic) {
 
 TEST(fifo_order) {
     NBLFQ<void*, 16> q;
-    for (uintptr_t i = 1; i <= 10; ++i) q.enqueue(encode(i));
+    for (uintptr_t i = 1; i <= 10; ++i) (void)q.enqueue(encode(i));
     for (uintptr_t i = 1; i <= 10; ++i) {
         void* out = q.dequeue();
         EXPECT(out != nullptr);
@@ -100,9 +100,9 @@ TEST(fill_drain_fill) {
 TEST(empty_check) {
     NBLFQ<void*, 4> q;
     EXPECT(q.empty());
-    q.enqueue(encode(1));
+    (void)q.enqueue(encode(1));
     // empty() is approximate — just check it doesn't crash
-    q.dequeue();
+    (void)q.dequeue();
     EXPECT(q.empty());
 }
 

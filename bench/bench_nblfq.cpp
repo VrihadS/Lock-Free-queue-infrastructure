@@ -1,12 +1,19 @@
-// ── NBLFQ benchmark ──────────────────────────────────────────────────────
+// ── MPMC queue benchmark ─────────────────────────────────────────────────
 //
-// Compares four queue implementations across 1, 2, 4 producer/consumer pairs.
-// Metric: round-trip latency (producer stamps rdtsc, consumer measures delta)
-// and throughput (total ops / elapsed wall time).
+// Compares NBLFQ, a Vyukov bounded queue, folly::MPMCQueue (optional) and a
+// mutex-protected std::queue at 1, 2 and 4 producer/consumer pairs, with SPSC as a
+// 1P+1C reference. Cores and op count come from a config file (see bench.conf).
+//
+// Metrics
+//   throughput  total ops / wall time. This is the number to compare queues by.
+//   latency     time from the producer's timestamp to the consumer receiving the item.
+//               Producers run flat out, so once a queue fills this is dominated by
+//               how long items wait in it, not by the cost of one hand-off. Treat the
+//               p50/p99 columns as queue-depth indicators, not hop latency.
 
 #include "nblfq.hpp"
 #include "spsc_queue.hpp"
-#include "mpmc.hpp"
+#include "vyukov_mpmc.hpp"
 
 #ifdef HAVE_FOLLY
   #include <folly/MPMCQueue.h>
@@ -36,7 +43,7 @@
       using namespace std::chrono;
       auto t0 = high_resolution_clock::now(); uint64_t c0 = TIMER();
       volatile int x=0; auto dl = t0+milliseconds(50);
-      while(high_resolution_clock::now()<dl)++x;
+      while(high_resolution_clock::now()<dl) x = x + 1;
       uint64_t c1=TIMER(); auto t1=high_resolution_clock::now();
       g_ghz = (c1-c0)/(double)duration_cast<nanoseconds>(t1-t0).count();
       printf("CPU: %.3f GHz (rdtsc)\n", g_ghz);
@@ -56,7 +63,6 @@
   static inline double to_ns(uint64_t d) { return (double)d; }
   static void calibrate() {}
 #endif
-#include <pthread.h>
 
 #if defined(__APPLE__)
 void prefer_p_cores()
@@ -157,46 +163,6 @@ static bool have_pairs(size_t n) {
     return g_cfg.producer_cores.size() >= n && g_cfg.consumer_cores.size() >= n;
 }
 
-// static void pin(int core)
-// {
-//     cpu_set_t set;
-
-//     CPU_ZERO(&set);
-//     CPU_SET(core, &set);
-
-//     int rc =
-//         pthread_setaffinity_np(
-//             pthread_self(),
-//             sizeof(set),
-//             &set);
-
-//     if (rc)
-//     {
-//         perror("pthread_setaffinity_np");
-//         abort();
-//     }
-
-//     cpu_set_t verify;
-
-//     CPU_ZERO(&verify);
-
-//     pthread_getaffinity_np(
-//         pthread_self(),
-//         sizeof(verify),
-//         &verify);
-
-//     printf(
-//         "thread %lu pinned to CPUs:",
-//         pthread_self());
-
-//     for (int i = 0; i < CPU_SETSIZE; ++i)
-//     {
-//         if (CPU_ISSET(i, &verify))
-//             printf(" %d", i);
-//     }
-
-//     printf("\n");
-// }
 // ── Stats ─────────────────────────────────────────────────────────────────
 static void print_stats(const char* label, std::vector<double>& lats_ns,
                         double wall_ns, size_t total_ops) {
@@ -274,7 +240,7 @@ static void bench_spsc(size_t K) {
 
     auto wall0 = std::chrono::high_resolution_clock::now();
     std::thread prod([&]{ pin(prod_core(0)); for(size_t i=0;i<K;++i) q.push_spin(TIMER()); });
-    std::thread cons([&]{ pin(cons_core(0)); uint64_t v; for(size_t i=0;i<K;++i){ while(!q.pop(v)); lats[i]=to_ns(TIMER()-v); } });
+    std::thread cons([&]{ pin(cons_core(0)); uint64_t v; for(size_t i=0;i<K;++i){ while(!q.pop(v)) {} lats[i]=to_ns(TIMER()-v); } });
     prod.join(); cons.join();
     auto wall1 = std::chrono::high_resolution_clock::now();
     double wall_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(wall1-wall0).count();
@@ -342,7 +308,7 @@ static void bench_nblfq(size_t N_pairs, size_t K) {
 
 // ── Benchmark: Vyukov MPMC ────────────────────────────────────────────────
 static void bench_vyukov(size_t N_pairs, size_t K) {
-    lfq::MPMCQueue<uint64_t> q(1 << 17);  // fresh each call (already heap, not static)
+    lfq::VyukovMPMCQueue<uint64_t> q(1 << 17);  // fresh each call (already heap, not static)
 
     std::vector<std::vector<double>> thread_lats(N_pairs);
     std::atomic<size_t> total_consumed{0};
@@ -452,7 +418,7 @@ int main(int argc, char* argv[]) {
     load_config(argc > 1 ? argv[1] : "bench.conf");
     const size_t K = g_cfg.ops;
 
-    printf("\nNBLFQ vs SPSC vs Mutex Benchmark\n");
+    printf("\nMPMC queue benchmark\n");
     printf("Ops per producer: %zu\n", K);
     printf("Producer cores:"); for (int c : g_cfg.producer_cores) printf(" %d", c);
     printf("\nConsumer cores:"); for (int c : g_cfg.consumer_cores) printf(" %d", c);

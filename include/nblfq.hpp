@@ -194,9 +194,7 @@ public:
             // ── Phase 3: Commit via CAS ───────────────────────────────────
             // Expected: <NIL, c>  →  Desired: <eptr, c>
             // The counter c is unchanged (enqueue does NOT increment counter).
-            TaggedPtr expected(NIL_VAL | (c << CTR_SHIFT));
-            // Build expected properly: ptr=0, counter=c
-            expected = TaggedPtr(0, c);
+            TaggedPtr expected(0, c);   // ptr = NIL, counter = c
             TaggedPtr desired(eptr, c);
 
             if (A_[h].compare_exchange_strong(expected, desired,

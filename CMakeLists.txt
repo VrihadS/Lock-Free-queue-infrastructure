@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(spsc_queue LANGUAGES CXX)
+project(lockfree_queues LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -13,23 +13,23 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-add_library(spsc_lib INTERFACE)
-target_include_directories(spsc_lib INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_compile_options(spsc_lib INTERFACE -Wall -Wextra -Wno-unused-parameter)
+add_library(lfq_headers INTERFACE)
+target_include_directories(lfq_headers INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_options(lfq_headers INTERFACE -Wall -Wextra -Wno-unused-parameter)
 
 find_package(Threads REQUIRED)
 
 # ── SPSC ──────────────────────────────────────────────────────────────────
 add_executable(bench_spsc   bench/bench_spsc.cpp)
 add_executable(test_spsc    tests/test_spsc.cpp)
-target_link_libraries(bench_spsc  PRIVATE spsc_lib Threads::Threads)
-target_link_libraries(test_spsc   PRIVATE spsc_lib Threads::Threads)
+target_link_libraries(bench_spsc  PRIVATE lfq_headers Threads::Threads)
+target_link_libraries(test_spsc   PRIVATE lfq_headers Threads::Threads)
 
 # ── NBLFQ (MPMC) ──────────────────────────────────────────────────────────
 add_executable(bench_nblfq  bench/bench_nblfq.cpp)
 add_executable(test_nblfq   tests/test_nblfq.cpp)
-target_link_libraries(bench_nblfq PRIVATE spsc_lib Threads::Threads)
-target_link_libraries(test_nblfq  PRIVATE spsc_lib Threads::Threads)
+target_link_libraries(bench_nblfq PRIVATE lfq_headers Threads::Threads)
+target_link_libraries(test_nblfq  PRIVATE lfq_headers Threads::Threads)
 
 # ── Optional: benchmark against folly::MPMCQueue ──────────────────────────
 # Current folly requires C++20, so only bench_nblfq is raised to C++20.

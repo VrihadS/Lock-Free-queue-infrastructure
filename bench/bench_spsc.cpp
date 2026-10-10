@@ -98,9 +98,6 @@ static std::vector<uint64_t> bench_mutex(size_t N, int prod_core, int cons_core)
     std::vector<uint64_t> latencies;
     latencies.resize(N);
 
-    std::atomic<bool> done{false};
-    std::atomic<size_t> consumed{0};
-
     std::thread producer([&] {
         pin_thread(prod_core);
         for (size_t i = 0; i < N; ++i) {
@@ -239,15 +236,8 @@ int main(int argc, char* argv[]) {
     auto lats_spsc   = bench_spsc  (N, PROD_CORE, CONS_CORE);
     print_stats("This SPSC (acquire/release, false-sharing-free)", lats_spsc, ghz);
 
-    // Compute speedup
-    std::sort(lats_mutex.begin(),  lats_mutex.end());
-    std::sort(lats_spsc.begin(),   lats_spsc.end());
-    double mutex_p50 = rdtsc_to_ns(lats_mutex[N / 2], ghz);
-    double spsc_p50  = rdtsc_to_ns(lats_spsc [N / 2], ghz);
-    printf("%f ns (mutex) vs %f ns (SPSC)\n", mutex_p50, spsc_p50);
-    printf("\n══════════════════════════════════════════════════════\n");
-    printf("  Speedup (p50): %.1fx over mutex baseline\n", mutex_p50 / spsc_p50);
-    printf("══════════════════════════════════════════════════════\n\n");
+    printf("\nNote: producers run flat out, so once a queue fills, latency is mostly time spent\n");
+    printf("waiting in it. Compare queues by the shape of the distribution, not a single ratio.\n\n");
 
     return 0;
 }

@@ -4,17 +4,15 @@
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
-#include <new>       // std::hardware_destructive_interference_size
 #include <utility>
 #include <thread>
 namespace lfq {
 
 // ── Cache line size ───────────────────────────────────────────────────────
-// C++17 provides this via <new>. Fall back to 64 if the compiler doesn't
-// support it (most x86_64 compilers do).
-// Hardcode 64 bytes — universal for x86_64 and Apple Silicon M-series.
-// std::hardware_destructive_interference_size triggers ABI warnings on GCC 12+
-// and is unreliable across compiler versions. 64 is correct for all our targets.
+// Hardcoded to 64 bytes, which is right for x86_64. Apple Silicon M-series uses
+// 128-byte lines; on that hardware this still removes false sharing between head_ and
+// tail_ only partially. std::hardware_destructive_interference_size is avoided
+// because it triggers ABI warnings on GCC 12+.
 static constexpr size_t CACHE_LINE = 64;
 
 // ── SPSCQueue ─────────────────────────────────────────────────────────────

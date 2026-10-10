@@ -1,6 +1,6 @@
-# NBLFQ — Lock-Free MPMC Queue
+# NBLFQ design notes
 
-A faithful C++17 implementation of the NBLFQ algorithm from:
+A C++17 implementation of the NBLFQ algorithm from:
 
 > *"NBLFQ: a lock-free MPMC queue optimized for low contention"*
 > Alexandre Denis, Charles Goedefroit — IPDPS 2025
@@ -10,7 +10,7 @@ A faithful C++17 implementation of the NBLFQ algorithm from:
 
 ## Why NBLFQ over a naive MPMC queue
 
-Most MPMC lock-free queues (Michael-Scott, SCQ, etc.) are optimised for *scalability* under heavy contention. NBLFQ is optimised for the *uncontended case* — a single CAS on the critical path when no other thread is racing. The paper shows it is **2× faster** than the next-best algorithm at 1P+1C and **best overall** in a real HPC communication library across 4 hardware platforms.
+Most MPMC lock-free queues (Michael-Scott, SCQ, etc.) are optimised for *scalability* under heavy contention. NBLFQ is optimised for the *uncontended case* — a single CAS on the critical path when no other thread is racing. The paper reports it as the fastest of the algorithms it evaluates in that setting; those results are the authors', not reproduced here.
 
 ---
 
@@ -50,35 +50,31 @@ Both enqueue and dequeue commit with exactly **one** CAS. No two-phase write (un
 
 ---
 
-## Comparison with the SPSC queue in this repo
+## Limitations
 
-| Property | SPSC | NBLFQ |
-|---|---|---|
-| Producers | 1 only | Any number |
-| Consumers | 1 only | Any number |
-| Hot-path atomics | 2 relaxed loads + 1 release store | 2 relaxed loads + 1 CAS |
-| Memory ordering | acquire/release | CAS = full barrier |
-| Element type | Any trivially copyable T | Non-null pointers only |
-| Uncontended latency | ~18 ns (1P1C) | ~35–60 ns (1P1C) |
-| Crossed book possible? | N/A | No — single CAS guarantees linearisability |
+- `T` must be a non-null pointer (or fit in a pointer); 0 means "empty".
+- Pointers are packed into 48 bits, so this relies on x86_64 / aarch64 user-space addresses.
+- The 16-bit counter wraps, so ABA protection is bounded; the paper describes a
+  double-width-CAS variant for stronger guarantees. This repo does not implement it.
+- `size_approx()` scans the whole ring and is for diagnostics only.
 
-Use SPSC when you have exactly one producer and one consumer (e.g. market data → strategy thread). Use NBLFQ when multiple threads need to enqueue or dequeue (e.g. order submission from multiple strategy threads into a single execution thread, or a shared work queue).
+## How it compares here
+
+The paper reports that NBLFQ is fastest in its low-contention setting. In this repo's
+benchmark, on one run, NBLFQ and the Vyukov queue had about the same throughput at 1, 2 and
+4 producer/consumer pairs, and `folly::MPMCQueue` was slower; see
+[../results/rocky-isolated-cores.md](../results/rocky-isolated-cores.md) for the numbers
+and their caveats. That benchmark does not isolate the uncontended hand-off cost that the
+paper's design targets.
+
+Use `SPSCQueue` when there is exactly one producer and one consumer.
 
 ---
 
-## Build & Run
+## Tests and benchmark
 
 ```bash
-cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j$(nproc)
-
-# Unit tests (141 assertions: single-threaded + MPMC correctness)
-./build/test_nblfq
-
-# Benchmark: SPSC vs NBLFQ vs Vyukov vs folly (optional) vs mutex, 1/2/4 pairs.
-# Cores and op count come from a config file (see bench.conf in the repo root).
-./build/bench_nblfq bench.conf
+./build/test_nblfq                 # 141 assertions: single-threaded + MPMC correctness
+./build/bench_nblfq bench.conf     # see the top-level README
 ```
-
----
 

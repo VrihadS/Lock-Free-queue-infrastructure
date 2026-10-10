@@ -41,7 +41,7 @@ TEST(push_pop_single) {
 
 TEST(fifo_order) {
     SPSCQueue<int, 8> q;
-    for (int i = 0; i < 7; ++i) q.push(i);
+    for (int i = 0; i < 7; ++i) (void)q.push(i);
     for (int i = 0; i < 7; ++i) {
         int v = -1;
         EXPECT(q.pop(v));
@@ -90,11 +90,11 @@ TEST(move_push) {
 TEST(size_approx) {
     SPSCQueue<int, 8> q;
     EXPECT(q.size_approx() == 0);
-    q.push(1);
-    q.push(2);
+    (void)q.push(1);
+    (void)q.push(2);
     EXPECT(q.size_approx() == 2);
     int v;
-    q.pop(v);
+    (void)q.pop(v);
     EXPECT(q.size_approx() == 1);
 }
 
