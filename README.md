@@ -15,6 +15,7 @@ threads to cores and compare them against `folly::MPMCQueue`.
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ctest --test-dir build                 # 70 SPSC + 141 NBLFQ assertions
+./scripts/tsan.sh --bench              # same tests under ThreadSanitizer + UBSan, plus a short benchmark
 
 ./build/bench_spsc 500000 2 3          # <messages> <producer core> <consumer core>
 ./build/bench_nblfq bench.conf         # cores and op count come from bench.conf
@@ -48,6 +49,15 @@ Latest run: Rocky Linux, isolated cores, one run, throughput in million ops/s
   slower at p50 than a naive seq_cst queue) is a single run with no established
   explanation; the results file has a possible, untested one.
 
+## Testing
+
+`test_spsc` (70 assertions) and `test_nblfq` (141) cover single-threaded behaviour and
+multi-threaded correctness. `scripts/tsan.sh` runs them under ThreadSanitizer and UBSan;
+on Apple clang 17 / arm64 they ran with no reports, and a deliberately racy program was
+reported, which confirms TSan works there. Limits worth knowing: the Vyukov queue has no
+unit tests (`tsan.sh --bench` exercises it through the benchmark), TSan only reports races
+it observes, and it has not been run on the x86 Linux server yet.
+
 ## Repository layout
 
 ```
@@ -66,6 +76,7 @@ scripts/
   setup_folly.sh      build folly into third_party/ (optional)
   build.sh            configure and build, with folly if it was set up
   package.sh          bundle binaries + shared libraries for a machine with no toolchain
+  tsan.sh             build with ThreadSanitizer + UBSan and run the tests
   clean.sh            remove everything the scripts created inside the repo
 docs/
   spsc.md             SPSC design notes
