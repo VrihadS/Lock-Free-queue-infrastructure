@@ -17,7 +17,7 @@ waited in a full queue, not the cost of one hand-off (see "Caveats").
 | TSC rate | 2.496 GHz (from the benchmark's own calibration) |
 | CPU model, hyperthread layout | **not recorded**, so it is unknown whether any producer/consumer pair share a physical core |
 | `bench_nblfq` cores | producers 14, 15, 8, 9; consumers 10, 11, 12, 13 |
-| `bench_spsc` cores | 2 and 4 (the program's defaults, **not** the isolated cores) |
+| `bench_spsc` cores | 2 and 4 (the program's defaults; isolated cores, per the person who ran it; the isolated-core list itself was not captured) |
 | Ops | 1,000,000 per producer (`bench_nblfq`), 500,000 messages (`bench_spsc`) |
 | Queue capacity | 2^17 slots (`bench_nblfq`), 2^16 slots (`bench_spsc`) |
 | folly | `folly::MPMCQueue` via `writeIfNotFull` / `readIfNotEmpty` (non-blocking) |
@@ -52,10 +52,13 @@ What the data supports:
   into a pooled box before the enqueue succeeds, and the pool wraps at the queue size.
   It could understate some NBLFQ latencies. I tried to reproduce an effect on a Mac with
   a 32x larger pool and did not see one, so it is unconfirmed.
-- **`bench_spsc` ran on cores 2 and 4**, not isolated cores, and its result looks odd:
-  this SPSC queue's p50 (1820 ns) is *higher* than the naive seq_cst queue's (236 ns)
-  even though both have 2^16 slots. The cause is unknown. Rerun it on isolated cores with
-  `./bench_spsc 500000 <producer_core> <consumer_core>` before drawing conclusions.
+- **`bench_spsc` result looks odd.** Its cores (2 and 4) were isolated, so core noise is
+  not the explanation. This SPSC queue's p50 (1820 ns) is *higher* than the naive seq_cst
+  queue's (236 ns), even though both have 2^16 slots. The cause is not established. One
+  untested possibility: the faster SPSC producer runs further ahead of the consumer, so
+  its items wait longer in the queue (the same backlog effect described above), while the
+  slower naive producer lets its consumer keep up. Repeat the run several times and report
+  the median before drawing conclusions; this is a single run.
 - The "speedup over mutex" line that older versions printed compares against a queue
   whose latency is dominated by backlog. It has been removed from the program.
 

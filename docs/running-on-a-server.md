@@ -36,8 +36,8 @@ ops = 1000000
   siblings with `lscpu -e`. The benchmark spins at 100% on every core it uses, so pick
   cores that nothing else relies on.
 - `bench_spsc` does not read `bench.conf`: pass cores as arguments,
-  `./build/bench_spsc 500000 <producer core> <consumer core>`. Its defaults (2 and 4) are
-  not necessarily isolated cores.
+  `./build/bench_spsc 500000 <producer core> <consumer core>`. Its defaults are cores 2
+  and 4; make sure those are cores you intend to use, or pass your own.
 
 ## 3. A machine with no root and no toolchain (for example production)
 

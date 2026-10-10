@@ -44,9 +44,9 @@ Latest run: Rocky Linux, isolated cores, one run, throughput in million ops/s
   not the cost of one hand-off. Latency figures are not comparable across rows, and some
   rows in the raw output (for example a 382 ns p50 next to rows in the milliseconds) come
   from a run where the queue never filled.
-- The standalone `bench_spsc` has not yet been run on isolated cores, and its latest
-  result (this SPSC queue slower at p50 than a naive seq_cst queue) is unexplained.
-  Details in the results file.
+- The standalone `bench_spsc` ran on isolated cores, and its result (this SPSC queue
+  slower at p50 than a naive seq_cst queue) is a single run with no established
+  explanation; the results file has a possible, untested one.
 
 ## Repository layout
 
